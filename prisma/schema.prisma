@@ -1,0 +1,22 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Search {
+  id         String   @id @default(cuid())
+  address    String
+  placeCount Int
+  results    Json
+  createdAt  DateTime @default(now())
+}
+
+model RateLimit {
+  ip      String   @id
+  count   Int      @default(1)
+  resetAt DateTime
+}
