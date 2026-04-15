@@ -14,3 +14,9 @@ model Search {
   results    Json
   createdAt  DateTime @default(now())
 }
+
+model RateLimit {
+  ip      String   @id
+  count   Int      @default(1)
+  resetAt DateTime
+}
