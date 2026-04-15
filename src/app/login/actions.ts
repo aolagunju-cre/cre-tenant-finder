@@ -3,7 +3,7 @@
 export async function loginAction(
   _prevState: { error?: string },
   formData: FormData
-): Promise<{ error?: string }> {
+): Promise<{ error?: string } | undefined> {
   const password = formData.get("password") as string;
   const adminPassword = process.env.ADMIN_PASSWORD;
 
@@ -15,7 +15,7 @@ export async function loginAction(
     return { error: "Invalid password." };
   }
 
-  return { success: true };
+  return undefined;
 }
 
 export async function logoutAction(): Promise<void> {}
