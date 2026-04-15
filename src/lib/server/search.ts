@@ -1,6 +1,5 @@
 "use server";
 
-import { PrismaClient } from "@prisma/client";
 import { geocodeAddress } from "./geocode";
 import {
   nearbySearch,
@@ -9,8 +8,6 @@ import {
 } from "./places";
 import { parseSuite, extractFloor } from "../suite-parser";
 import { classifyIndustry, deduplicateByAddress } from "../floor-grouper";
-
-const prisma = new PrismaClient();
 
 export interface Tenant {
   name: string;
@@ -29,6 +26,13 @@ export interface SearchResult {
   address: string;
   totalCount: number;
 }
+
+// In-memory search history (resets on cold start — fine for MVP)
+const searchHistory: Array<{
+  address: string;
+  placeCount: number;
+  createdAt: Date;
+}> = [];
 
 export async function searchAddress(
   address: string
@@ -71,26 +75,12 @@ export async function searchAddress(
     };
   });
 
-  // Step 6: Save to DB
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await prisma.search.create({
-      data: {
-        address,
-        placeCount: tenants.length,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        results: tenants as any,
-      },
-    });
-  } catch {
-    // Non-fatal - search still works even if DB save fails
-  }
+  // Save to in-memory history
+  searchHistory.push({ address, placeCount: tenants.length, createdAt: new Date() });
 
   return { tenants, address, totalCount: tenants.length };
 }
 
 export async function getSearchHistory() {
-  return prisma.search.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  return searchHistory;
 }
