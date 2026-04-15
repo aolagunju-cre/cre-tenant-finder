@@ -1,5 +1,3 @@
-"use server";
-
 import Link from "next/link";
 import { doSearch } from "./actions";
 
