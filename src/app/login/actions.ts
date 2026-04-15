@@ -20,9 +20,9 @@ export async function loginAction(
   const cookieStore = await cookies();
   cookieStore.set("session", "valid", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     sameSite: "lax",
-    maxAge: 60 * 60 * 24,
+    maxAge: 86400,
     path: "/",
   });
 
