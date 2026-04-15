@@ -1,22 +1,33 @@
 "use client";
 
-import { useActionState } from "react";
-import { useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { loginAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [state, formAction, isPending] = useActionState(loginAction, {});
+  const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (state && !state.error) {
+  async function handleSubmit(formData: FormData) {
+    setLoading(true);
+    setError("");
+
+    const res = await fetch("/api/login", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (res.ok) {
       router.push("/");
       router.refresh();
+    } else {
+      const data = await res.json();
+      setError(data.error || "Login failed");
+      setLoading(false);
     }
-  }, [state, router]);
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
@@ -26,7 +37,7 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-muted-foreground">Sign in to continue</p>
         </div>
 
-        <form action={formAction} className="space-y-4">
+        <form action={handleSubmit} className="space-y-4">
           <div>
             <Input
               type="password"
@@ -36,11 +47,9 @@ export default function LoginPage() {
               required
             />
           </div>
-          {state?.error && (
-            <p className="text-sm text-red-500">{state.error}</p>
-          )}
-          <Button type="submit" className="w-full" disabled={isPending}>
-            {isPending ? "Signing in..." : "Sign In"}
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Signing in..." : "Sign In"}
           </Button>
         </form>
       </div>

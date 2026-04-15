@@ -1,7 +1,5 @@
 "use server";
 
-import { cookies } from "next/headers";
-
 export async function loginAction(
   _prevState: { error?: string },
   formData: FormData
@@ -17,19 +15,7 @@ export async function loginAction(
     return { error: "Invalid password." };
   }
 
-  const cookieStore = await cookies();
-  cookieStore.set("session", "valid", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    maxAge: 86400,
-    path: "/",
-  });
-
-  return {};
+  return { success: true };
 }
 
-export async function logoutAction(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete("session");
-}
+export async function logoutAction(): Promise<void> {}
