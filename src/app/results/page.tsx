@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { Search } from "lucide-react";
 import { groupByFloor, type Tenant } from "@/lib/floor-grouper";
@@ -12,7 +12,6 @@ import { exportToCsv } from "@/components/export-buttons";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { AddressSearch } from "@/components/address-search";
 import { searchAddressAction } from "./actions";
 
@@ -26,6 +25,7 @@ function ResultsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [initialSearchDone, setInitialSearchDone] = useState(false);
 
   const searchData = useMemo<SearchData | null>(() => {
     const data = searchParams.get("data");
@@ -37,6 +37,27 @@ function ResultsContent() {
     }
   }, [searchParams]);
 
+  const pendingSearch = useMemo(() => searchParams.get("search"), [searchParams]);
+
+  // If we have a pending search but no data yet, run the search
+  if (pendingSearch && !searchData && !initialSearchDone && !isLoading) {
+    const addr = decodeURIComponent(pendingSearch);
+    setInitialSearchDone(true);
+    setIsLoading(true);
+    searchAddressAction(addr).then((result) => {
+      const encoded = encodeURIComponent(
+        JSON.stringify({
+          address: result.address,
+          count: result.totalCount,
+          tenants: result.tenants,
+        })
+      );
+      router.push(`/results?data=${encoded}`);
+    }).catch(() => {
+      setIsLoading(false);
+    });
+  }
+
   const tenants = searchData?.tenants ?? [];
   const address = searchData?.address ?? "";
   const totalCount = searchData?.count ?? 0;
@@ -46,23 +67,6 @@ function ResultsContent() {
 
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-
-  const handleSearch = async (addr: string) => {
-    setIsLoading(true);
-    try {
-      const result = await searchAddressAction(addr);
-      const encoded = encodeURIComponent(
-        JSON.stringify({
-          address: result.address,
-          count: result.totalCount,
-          tenants: result.tenants,
-        })
-      );
-      router.push(`/results?data=${encoded}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
@@ -85,7 +89,7 @@ function ResultsContent() {
         )}
       </div>
 
-      <AddressSearch onAddressSelect={handleSearch} isLoading={isLoading} />
+      <AddressSearch />
 
       {isLoading && (
         <div className="flex items-center gap-2 text-muted-foreground">
@@ -94,7 +98,7 @@ function ResultsContent() {
         </div>
       )}
 
-      {!isLoading && !searchData && (
+      {!isLoading && !searchData && !pendingSearch && (
         <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
           No search data.{" "}
           <Link href="/" className="text-blue-600 hover:underline">
