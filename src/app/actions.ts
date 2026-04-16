@@ -8,6 +8,10 @@ export async function doSearch(formData: FormData): Promise<void> {
   if (!address?.trim()) return;
 
   const result = await searchAddress(address.trim());
-  const searchId = encodeURIComponent(JSON.stringify({ address: result.address, count: result.totalCount, tenants: result.tenants }));
-  redirect(`/results?data=${searchId}`);
+  const encoded = encodeURIComponent(JSON.stringify({
+    address: result.formatted_address || result.address,
+    count: result.totalCount,
+    tenants: result.tenants,
+  }));
+  redirect(`/results?data=${encoded}`);
 }

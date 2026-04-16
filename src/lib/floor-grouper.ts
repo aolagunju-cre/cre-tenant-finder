@@ -22,6 +22,7 @@ export interface Tenant {
   business_status: string;
   formatted_address: string;
   place_id: string;
+  maps_url: string;
 }
 
 export interface FloorGroup {

@@ -2,9 +2,16 @@
 
 const GEO_URL = "https://maps.googleapis.com/maps/api/geocode/json";
 
+export interface GeocodeResult {
+  lat: number;
+  lng: number;
+  formatted_address: string;
+  postal_code: string;
+}
+
 export async function geocodeAddress(
   address: string
-): Promise<{ lat: number; lng: number } | null> {
+): Promise<GeocodeResult | null> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
@@ -24,6 +31,15 @@ export async function geocodeAddress(
     return null;
   }
 
-  const { lat, lng } = data.results[0].geometry.location;
-  return { lat, lng };
+  const result = data.results[0];
+  const { lat, lng } = result.geometry.location;
+  const formatted_address = result.formatted_address;
+
+  // Extract Canadian postal code (A1A 1A1 pattern)
+  const postal_code_match = formatted_address.match(
+    /[A-Z]\d[A-Z]\s?\d[A-Z]\d/i
+  );
+  const postal_code = postal_code_match ? postal_code_match[0].replace(/\s/g, "") : "";
+
+  return { lat, lng, formatted_address, postal_code };
 }

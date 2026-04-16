@@ -1,66 +1,109 @@
 "use server";
 
-const PLACES_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
-const DETAILS_URL =
-  "https://maps.googleapis.com/maps/api/place/details/json";
+const PLACES_V1_URL = "https://places.googleapis.com/v1/places:searchText";
 
 export interface PlaceResult {
-  place_id: string;
-  name: string;
-  formatted_address: string;
-  international_phone_number?: string;
-  website?: string;
-  business_status?: string;
-  types: string[];
-  opening_hours?: Record<string, unknown>;
-  geometry: { location: { lat: number; lng: number } };
+  id: string;
+  displayName: { text: string; languageCode: string };
+  formattedAddress?: string;
+  location?: { latitude: number; longitude: number };
+  primaryType?: string;
+  types?: string[];
+  businessStatus?: string;
+  googleMapsUri?: string;
+  websiteUri?: string;
+  nationalPhoneNumber?: string;
+  internationalPhoneNumber?: string;
 }
 
-async function fetchWithRetry(url: string, retries = 1): Promise<Response> {
-  const res = await fetch(url, { cache: "no-store" });
-  if (res.status === 429 && retries > 0) {
-    await new Promise((r) => setTimeout(r, 1000));
-    return fetchWithRetry(url, retries - 1);
+interface SearchResponse {
+  places: PlaceResult[];
+}
+
+async function textSearch(
+  apiKey: string,
+  query: string,
+  maxResults = 20
+): Promise<PlaceResult[]> {
+  const res = await fetch(PLACES_V1_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": [
+        "places.id",
+        "places.displayName",
+        "places.formattedAddress",
+        "places.location",
+        "places.primaryType",
+        "places.types",
+        "places.businessStatus",
+        "places.googleMapsUri",
+        "places.websiteUri",
+        "places.nationalPhoneNumber",
+        "places.internationalPhoneNumber",
+      ].join(","),
+    },
+    body: JSON.stringify({
+      textQuery: query,
+      maxResultCount: maxResults,
+    }),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    if (res.status === 400) return [];
+    throw new Error(`Places v1 API error: ${res.status}`);
   }
-  return res;
+
+  const data: SearchResponse = await res.json();
+  return data.places ?? [];
 }
 
-export async function nearbySearch(
-  lat: number,
-  lng: number
+export async function searchTenants(
+  address: string,
+  postalCode: string
 ): Promise<PlaceResult[]> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
-  const url = `${PLACES_URL}?location=${lat},${lng}&radius=30&key=${apiKey}`;
-  const res = await fetchWithRetry(url);
+  // Multiple search queries to catch different business listings at the address
+  const searchQueries = [
+    `businesses at ${address}`,
+    `offices at ${address}`,
+    `companies at ${address}`,
+    `stores at ${address}`,
+    `${address} tenants`,
+    `${address} businesses`,
+  ];
 
-  if (!res.ok) {
-    if (res.status === 400) return [];
-    throw new Error(`Places API error: ${res.status}`);
+  const allResults: PlaceResult[] = [];
+
+  for (const query of searchQueries) {
+    try {
+      const results = await textSearch(apiKey, query, 20);
+      allResults.push(...results);
+      // Small delay to avoid rate limiting
+      await new Promise((r) => setTimeout(r, 200));
+    } catch {
+      continue;
+    }
   }
 
-  const data = await res.json();
-  if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-    throw new Error(`Places API status: ${data.status}`);
+  // Deduplicate by place ID
+  const seen = new Set<string>();
+  const unique = allResults.filter((p) => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
+
+  // Filter to the target postal code
+  if (postalCode) {
+    return unique.filter((p) =>
+      p.formattedAddress?.toLowerCase().includes(postalCode.toLowerCase())
+    );
   }
 
-  return (data.results ?? []) as PlaceResult[];
-}
-
-export async function getPlaceDetails(
-  placeId: string
-): Promise<Partial<PlaceResult>> {
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-  if (!apiKey) throw new Error("GOOGLE_PLACES_API_KEY not set");
-
-  const url = `${DETAILS_URL}?place_id=${placeId}&fields=name,formatted_address,international_phone_number,website,business_status,types,opening_hours,geometry&key=${apiKey}`;
-  const res = await fetchWithRetry(url);
-
-  if (!res.ok) return {};
-
-  const data = await res.json();
-  if (data.status !== "OK") return {};
-
-  return data.result as Partial<PlaceResult>;
+  return unique;
 }

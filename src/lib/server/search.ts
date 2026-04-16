@@ -1,13 +1,9 @@
 "use server";
 
-import { geocodeAddress } from "./geocode";
-import {
-  nearbySearch,
-  getPlaceDetails,
-  type PlaceResult,
-} from "./places";
+import { geocodeAddress, type GeocodeResult } from "./geocode";
+import { searchTenants, type PlaceResult } from "./places";
 import { parseSuite, extractFloor } from "../suite-parser";
-import { classifyIndustry, deduplicateByAddress } from "../floor-grouper";
+import { classifyIndustry } from "../floor-grouper";
 
 export interface Tenant {
   name: string;
@@ -19,11 +15,13 @@ export interface Tenant {
   business_status: string;
   formatted_address: string;
   place_id: string;
+  maps_url: string;
 }
 
 export interface SearchResult {
   tenants: Tenant[];
   address: string;
+  formatted_address: string;
   totalCount: number;
 }
 
@@ -37,48 +35,52 @@ const searchHistory: Array<{
 export async function searchAddress(
   address: string
 ): Promise<SearchResult> {
-  // Step 1: Geocode
-  const coords = await geocodeAddress(address);
-  if (!coords) {
-    return { tenants: [], address, totalCount: 0 };
+  // Step 1: Geocode — get coords, formatted address, and postal code
+  const geo: GeocodeResult | null = await geocodeAddress(address);
+  if (!geo) {
+    return { tenants: [], address, formatted_address: "", totalCount: 0 };
   }
 
-  // Step 2: Nearby search
-  const places = await nearbySearch(coords.lat, coords.lng);
-  if (!places.length) {
-    return { tenants: [], address, totalCount: 0 };
+  // Step 2: Multi-query text search via Places v1 API
+  const rawPlaces: PlaceResult[] = await searchTenants(
+    geo.formatted_address,
+    geo.postal_code
+  );
+
+  if (!rawPlaces.length) {
+    return { tenants: [], address, formatted_address: geo.formatted_address, totalCount: 0 };
   }
 
-  // Step 3: Place Details with retry
-  const detailed: PlaceResult[] = [];
-  for (const place of places) {
-    const details = await getPlaceDetails(place.place_id);
-    detailed.push({ ...place, ...details } as PlaceResult);
-  }
-
-  // Step 4: Deduplicate
-  const unique = deduplicateByAddress(detailed);
-
-  // Step 5: Build tenant objects
-  const tenants: Tenant[] = unique.map((p) => {
-    const parsed = parseSuite(p.formatted_address);
+  // Step 3: Build tenant objects
+  const tenants: Tenant[] = rawPlaces.map((p) => {
+    const parsed = parseSuite(p.formattedAddress ?? "");
     return {
-      name: p.name,
+      name: p.displayName?.text ?? "",
       suite: parsed?.suite ?? "",
       floor: parsed ? extractFloor(parsed.suite) : null,
-      phone: p.international_phone_number ?? "",
-      website: p.website ?? "",
+      phone: p.nationalPhoneNumber ?? p.internationalPhoneNumber ?? "",
+      website: p.websiteUri ?? "",
       type: classifyIndustry(p.types ?? []),
-      business_status: p.business_status ?? "",
-      formatted_address: p.formatted_address,
-      place_id: p.place_id,
+      business_status: p.businessStatus ?? "",
+      formatted_address: p.formattedAddress ?? "",
+      place_id: p.id,
+      maps_url: p.googleMapsUri ?? "",
     };
   });
 
   // Save to in-memory history
-  searchHistory.push({ address, placeCount: tenants.length, createdAt: new Date() });
+  searchHistory.push({
+    address: geo.formatted_address,
+    placeCount: tenants.length,
+    createdAt: new Date(),
+  });
 
-  return { tenants, address, totalCount: tenants.length };
+  return {
+    tenants,
+    address,
+    formatted_address: geo.formatted_address,
+    totalCount: tenants.length,
+  };
 }
 
 export async function getSearchHistory() {
