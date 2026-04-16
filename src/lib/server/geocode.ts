@@ -1,6 +1,6 @@
 "use server";
 
-const GEO_URL = "https://maps.googleapis.com/maps/api/geocoding/json";
+const GEO_URL = "https://maps.googleapis.com/maps/api/geocode/json";
 
 export async function geocodeAddress(
   address: string
